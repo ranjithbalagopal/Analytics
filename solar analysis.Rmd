@@ -1,0 +1,406 @@
+
+
+
+
+```{r warning=FALSE}
+library(caret)
+library(psych)
+library(e1071)
+library(class)
+library(ROCR)
+library(pROC)
+library(plotly)
+library(ggplot2)
+library(ROSE)
+library(corrplot)
+```
+
+```{r}
+solar =  read.csv("C:/Users/Ranjithbalagopal/Downloads/Data Analytics Works.csv",header = TRUE)
+
+```
+
+```{r}
+head(solar)
+str(solar)
+summary(solar)
+describe(solar)
+#preproces <- preProcess(solar[,1:19],method = "range")
+
+#Norm_solar <- predict(preproces,solar[,1:19])
+#Norm_solar <- cbind(Norm_solar,solar$Interest.in.solar.purchase)
+#names(Norm_solar)[20] <- "Interest.in.solar.purchase"
+```
+
+
+## Imbalanced data plot
+```{r}
+p1 <- plot_ly(x = names(table(solar$Interest.in.solar.purchase)),
+              y = as.numeric(table(solar$Interest.in.solar.purchase)),
+              name = "Customer purchase interest in solar panels",
+              type = "bar") %>% 
+  layout(title = "Solar panel purchase ",
+         xaxis = list(title = "Notinterested(0) Vs Interested(1)",
+                      zeroline = FALSE),
+         yaxis = list(title = "Number",
+                      zeroline = FALSE))
+p1
+
+```
+
+```{r include=FALSE}
+set.seed(2020)
+
+# Creating Data Parttition
+indxTrain <- createDataPartition (y = solar$Interest.in.solar.purchase , p=0.7, list=FALSE) 
+training <- solar[indxTrain,] 
+testing <-solar[-indxTrain,]
+
+str(training$Interest.in.solar.purchase)
+table(solar$Interest.in.solar.purchase)
+dim(solar)
+
+```
+
+
+
+## Imbalanced training data plot
+```{r}
+p3 <- plot_ly(x = names(table(training$Interest.in.solar.purchase)),
+              y = as.numeric(table(training$Interest.in.solar.purchase)),
+              name = "Customer purchase interest in solar panels",
+              type = "bar") %>% 
+  layout(title = "Solar panel purchase",
+          xaxis = list(title = "Notinterested(0) Vs Interested(1)",
+                      zeroline = FALSE),
+         yaxis = list(title = "Number",
+                      zeroline = FALSE))
+p3
+
+```
+
+## Rose package to balance the training data set
+```{r}
+
+rose.data <- ROSE(Interest.in.solar.purchase ~.,data = training,seed = 2020,hmult.mino = .10,hmult.majo = .1,N=4000)$data
+# Converting class variable from Interger datatype to Factor variable.
+training$Interest.in.solar.purchase <- as.factor(training$Interest.in.solar.purchase)
+testing$Interest.in.solar.purchase <- as.factor(testing$Interest.in.solar.purchase)
+rose.data$Interest.in.solar.purchase <- as.factor(rose.data$Interest.in.solar.purchase)
+table(rose.data$Interest.in.solar.purchase)
+
+```
+## Balanced training  data plot
+```{r}
+p2 <- plot_ly(x = names(table(rose.data$Interest.in.solar.purchase)),
+              y = as.numeric(table(rose.data$Interest.in.solar.purchase)),
+              name = "Customer purchase interest in solar panels",
+              type = "bar") %>% 
+  layout(title = "Solar panel purchase ",
+         xaxis = list(title = "Notinterested(0) Vs Interested(1)",
+                      zeroline = FALSE),
+         yaxis = list(title = "Number",
+                      zeroline = FALSE))
+p2
+
+```
+```{R}
+model2 <- glm(Interest.in.solar.purchase~. , data=rose.data, family="binomial")
+summary(model2)
+```
+
+
+
+
+# ```{r message=FALSE, warning=FALSE}
+#logistic regression model
+
+ctrl <- trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+set.seed(2020)
+model1 <- train(Interest.in.solar.purchase ~.,data= rose.data, method="glm", family="binomial",trControl = ctrl, tuneLength = 10,preProcess = c("scale", "center"))
+summary(model1)
+#```
+
+
+
+```{r}
+
+vip::vip(model2, num_features = 20)
+
+```
+
+```{r echo=FALSE}
+pred <- predict(model2, newdata=testing[,-20],type = "response")
+y_pred = ifelse(pred>0.5,1,0)
+cm = table(y_pred,testing[,20])
+c1 <- confusionMatrix(cm,positive = "1")
+c1
+```
+
+
+
+```{r}
+
+ctrl <- trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+
+mod_fit <- train(Interest.in.solar.purchase ~family.s.average.monthly.earnings.range
+                 +How.much.aware.are.you.about.solar.
+                 +percentage.of..roof..ready.to.give.for.solar
+                 +To.what.extent..factors.discourage.you.from.installing.solar...Lack.of.appropriate.loan.options.
+                 +Do.you.have.any.relative.friend.that.bought.a.solar.system.
+              ,data= rose.data, method="glm", family="binomial",trControl = ctrl, tuneLength = 10,preProcess = c("scale", "center"))
+summary(mod_fit)
+```
+
+```{r echo=FALSE}
+
+pred <- predict(mod_fit, newdata=testing)
+
+print("Confusion Matrix for Logistic Regression After Cross-validation")
+ck <- confusionMatrix(data=pred, testing$Interest.in.solar.purchase,positive = "1")
+ck
+```
+
+```{r}
+
+#fourfoldplot(ck$table)
+
+draw_confusion_matrix <- function(ck) {
+
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('CONFUSION MATRIX', cex.main=2)
+
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#3F97D0')
+  text(195, 435, 'Not interested', cex=1.2)
+  rect(250, 430, 340, 370, col='#F7AD50')
+  text(295, 435, 'Interested', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#F7AD50')
+  rect(250, 305, 340, 365, col='#3F97D0')
+  text(140, 400, 'Not interested', cex=1.2, srt=90)
+  text(140, 335, 'Interested', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(ck$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(ck$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(ck$byClass[1]*100), 3), cex=1.2)
+  text(30, 85, names(ck$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(ck$byClass[2]*100), 3), cex=1.2)
+  text(50, 85, names(ck$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(ck$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(ck$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(ck$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(ck$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(ck$byClass[7]), 3), cex=1.2)
+
+  # add in the accuracy information 
+  text(30, 35, names(ck$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(ck$overall[1]*100), 3), cex=1.4)
+}  
+draw_confusion_matrix(ck)
+```
+## Knn classification
+
+```{r}
+
+# Fitting KNN- algorithm
+set.seed(2020)
+solar.knn = knn(rose.data[,! names(rose.data) %in% c("Interest.in.solar.purchase")],
+              testing[,! names(testing) %in% c("Interest.in.solar.purchase")], rose.data$Interest.in.solar.purchase, k=7)
+
+# Using the summary function to retrieve the number of predicted labels
+
+summary(solar.knn )
+
+```
+
+Classification Matrix before k-cross validation 
+
+```{r}
+tab = table(testing[,20], solar.knn)
+confusionMatrix(tab,positive = "1")
+```
+Crossvalidation to find value of 'K' deriving highest accuracy
+
+```{r}
+set.seed(2020)
+ctrl1 <- trainControl(method="repeatedcv",repeats = 10)
+knn_fit <- train(Interest.in.solar.purchase ~., data = rose.data, method = "knn", trControl= ctrl1, preProcess = c("center","scale"), tuneLength = 10)
+```
+
+```{r}
+#Plotting yields Number of Neighbours Vs accuracy (based on repeated cross validation)
+knn_fit
+plot(knn_fit)
+knn_fit$results
+```
+
+
+
+
+**Fitting of KNN algorithm after k-cross validation**
+
+```{r}
+pred1 <- predict(knn_fit, newdata=testing)
+
+print("Confusion Matrix for KNN-Algorithm After Cross-validation")
+kck <- confusionMatrix(data=pred1, testing$Interest.in.solar.purchase,positive = "1")
+kck
+
+```
+```{r}
+draw_confusion_matrix <- function(kck) {
+
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('CONFUSION MATRIX', cex.main=2)
+
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#3F97D0')
+  text(195, 435, 'Not interested', cex=1.2)
+  rect(250, 430, 340, 370, col='#F7AD50')
+  text(295, 435, 'Interested', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#F7AD50')
+  rect(250, 305, 340, 365, col='#3F97D0')
+  text(140, 400, 'Not interested', cex=1.2, srt=90)
+  text(140, 335, 'Interested', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(kck$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(kck$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(kck$byClass[1]*100), 3), cex=1.2)
+  text(30, 85, names(kck$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(kck$byClass[2]*100), 3), cex=1.2)
+  text(50, 85, names(kck$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(kck$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(kck$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(kck$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(kck$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(kck$byClass[7]), 3), cex=1.2)
+
+  # add in the accuracy information 
+  text(30, 35, names(kck$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(kck$overall[1]*100), 3), cex=1.4)
+  
+}  
+draw_confusion_matrix(kck)
+
+```
+**Fitting of Naive Bayes before k-cross validation:**
+
+```{r}
+nb_solar <- naiveBayes(Interest.in.solar.purchase ~.,data = rose.data)
+nb_solar
+
+# Predicting on test data
+y_pred2 <- predict(nb_solar, newdata = testing) 
+
+```
+
+```{r}
+# Confusion Matrix Before k-cross validation
+print("Confusion Matrix for Naive Bayes before Cross-validation")
+confusionMatrix(data=y_pred2, testing$Interest.in.solar.purchase,positive = "1")
+
+```
+**Fitting of Naive Bayes after cross validation**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(2020)
+ctrl <- trainControl(method="repeatedcv",repeats = 7)
+NB_cross <- train(Interest.in.solar.purchase ~., data = rose.data, method = "nb", trControl= ctrl, 
+                    preProcess = c("center","scale"), tuneLength = 15)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+pred3 <- predict(NB_cross, newdata=testing)
+
+print("Confusion Matrix for Naive Bayes After Cross-validation")
+nck <-confusionMatrix(data=pred3, testing$Interest.in.solar.purchase,positive = "1")
+nck
+```
+```{r}
+draw_confusion_matrix <- function(nck) {
+
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('CONFUSION MATRIX', cex.main=2)
+
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#3F97D0')
+  text(195, 435, 'Not interested', cex=1.2)
+  rect(250, 430, 340, 370, col='#F7AD50')
+  text(295, 435, 'Interested', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#F7AD50')
+  rect(250, 305, 340, 365, col='#3F97D0')
+  text(140, 400, 'Not interested', cex=1.2, srt=90)
+  text(140, 335, 'Interested', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(nck$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(nck$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(nck$byClass[1])*100, 3), cex=1.2)
+  text(30, 85, names(nck$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(nck$byClass[2])*100, 3), cex=1.2)
+  text(50, 85, names(nck$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(nck$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(nck$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(nck$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(nck$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(nck$byClass[7]), 3), cex=1.2)
+
+  # add in the accuracy information 
+  text(30, 35, names(nck$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(nck$overall[1])*100, 3), cex=1.4)
+}
+draw_confusion_matrix(nck)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
